@@ -1,0 +1,175 @@
+<html>
+	<head>
+		<meta charset="utf8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+		<link rel="stylesheet" href="index.css">
+		<link href="https://fonts.googleapis.com/css?family=Open+Sans|Open+Sans+Condensed:300|Roboto" rel="stylesheet"> 
+		<link href='https://fonts.googleapis.com/css?family=Ek+Mukta:300' rel='stylesheet' type='text/css'>
+
+		<script type="text/javascript">
+			var API_BASE_URL = "http://localhost:8080";
+
+			var totalTouchDuration = 0;
+			var tapCounter = 0;
+			var startTap = 0, endTap = 0;
+			var tapSessionStartTime = 0;
+			var tapLog = "";
+			var tapLogsArray = [];
+
+			var tapLimit = 50;
+			var tapTimeOut = 60;
+			var uniqueIdentifier = 0;
+			var d;
+			var dependentVariable = "";
+
+			var showFeedback = false;
+			var interfaceVariations = 2;
+			var interfaceSequence = 1;
+
+			function onLoad() {
+				d = new Date();
+				if (d.getTime() % 2 == 0) {
+					showFeedback = true;
+				}
+
+				uniqueIdentifier = d.getTime();
+				var randomNumber = Math.floor(Math.random() * 42);
+				uniqueIdentifier = uniqueIdentifier + "" + randomNumber;
+
+				var el = document.getElementById('tapHere');
+				["mouseup", "mousedown", "touchstart", "touchend"].forEach(function(te) {
+					el.addEventListener(te, tapityTap);
+				});
+			}
+
+			function saveDependentVariable(dVariable) {
+				dependentVariable = dVariable;
+				document.getElementById("buttoncontainer").style.display = "none";
+				document.getElementById("container").style.display = "inline-block";
+			}
+
+			function syncToServer() {
+				console.log("Syncing to server...");
+
+				var xhr = new XMLHttpRequest();
+
+				xhr.onreadystatechange = function() {
+					if (this.readyState == 4) {
+						if (this.status == 200) {
+							var response = JSON.parse(this.responseText);
+							if (!response.success) {
+								document.getElementById("container").innerHTML =
+									'<span class="spanWhite">Server error: ' + response.message + '</span>';
+							}
+						} else {
+							document.getElementById("container").innerHTML =
+								'<span class="spanWhite">Could not reach server. Please try again.</span>';
+						}
+					}
+				};
+
+				var params = "id=" + uniqueIdentifier + "&var=" + dependentVariable + "&taps=[" + tapLogsArray + "]";
+
+				xhr.open("POST", API_BASE_URL + "/api/save-taps", true);
+				xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+				xhr.send(params);
+
+				console.log("Data sent to: " + API_BASE_URL + "/api/save-taps");
+			}
+
+			function tapityTap(tep) {
+				d = new Date();
+				var te = tep.type;
+				document.getElementById("action").innerHTML = te;
+
+				switch (te) {
+					case "touchstart":
+						tep.preventDefault();
+					case "mousedown":
+						startTap = d.getTime();
+						if (tapSessionStartTime == 0) tapSessionStartTime = startTap;
+						break;
+
+					case "touchend":
+						tep.preventDefault();
+					case "mouseup":
+						endTap = d.getTime();
+						var duration = endTap - startTap;
+
+						if (startTap == 0 || endTap == 0) {
+							// skip
+						} else if (startTap > endTap) {
+							// skip
+						} else {
+							tapCounter++;
+							totalTouchDuration += duration;
+							var meanTouchDuration = totalTouchDuration / tapCounter;
+
+							var tap = {
+								tapSequenceNumber: tapCounter,
+								startTimestamp: startTap,
+								endTimestamp: endTap,
+								interfaceSequence: interfaceSequence,
+								interface: showFeedback ? "feedbackshown" : "nofeedback"
+							};
+
+							tapLogsArray.push(JSON.stringify(tap));
+
+							if (tapCounter >= tapLimit) {
+								interfaceSequence++;
+								document.getElementById("counter").innerHTML =
+									'<span class="spanWhite">Mean tap duration: <span class="spanTime">' +
+									Math.round(meanTouchDuration, 2) + '</span> ms</span>';
+
+								if (interfaceSequence <= interfaceVariations) {
+									document.getElementById("continue").style.display = "block";
+									document.getElementById("tapHere").style.display = "none";
+								} else {
+									document.getElementById("tapHere").style.display = "none";
+									syncToServer();
+								}
+								return;
+							}
+
+							if (showFeedback) {
+								document.getElementById("counter").innerHTML =
+									"Mean tap duration: <span class='spanTime'>" +
+									Math.round(meanTouchDuration, 2) + "</span> ms";
+							}
+						}
+
+						startTap = 0;
+						endTap = 0;
+						break;
+				}
+			}
+
+			function startNext() {
+				startTap = 0;
+				endTap = 0;
+				tapCounter = 0;
+				totalTouchDuration = 0;
+				document.getElementById("tapHere").style.display = "block";
+				document.getElementById("continue").style.display = "none";
+				document.getElementById("counter").innerHTML = "";
+				showFeedback = !showFeedback;
+			}
+
+		</script>
+	</head>
+
+	<body onLoad="onLoad()">
+		<div>
+			<div id="buttoncontainer">
+				<button type="button" onclick="saveDependentVariable('android')" id="variable1">Android</button>
+				<button type="button" onclick="saveDependentVariable('pc')" id="variable2">PC</button>
+			</div>
+			<div id="container" class="container">
+				<div id="counter"></div>
+				<div id="action"></div>
+				<button id="tapHere"><img src="2x/round_touch_app_white_36dp.png"/></button>
+				<button id="continue" onclick="startNext()">Continue</button>
+			</div>
+		</div>
+	</body>
+</html>
